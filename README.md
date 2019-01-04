@@ -38,3 +38,8 @@ Running this project with the original adjacency matrix normalization method (`p
 The test accuracy was 0.8634 in the original paper.
 
 Running `python train.py -g 0 --normalization pygcn` which uses normalization method proposed in [GCN authors' PyTorch implementation](https://github.com/tkipf/pygcn/issues/11) yields much better result of 0.8687 (comparable with the original paper).
+
+# Licensing
+
+`load_data` module and all files under `data/` directory have been derived from [Dr. Kipf's repository](https://github.com/tkipf/gcn/tree/98357bded82fdc19595aa5b1448ee0e76557a399), so refer to the original repository for licensing.
+Other files are distributed under [CC0](./LICENSE).
