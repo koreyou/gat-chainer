@@ -1,7 +1,8 @@
+import copy
+
 import chainer
 import chainer.functions as F
 import numpy as np
-import copy
 from chainer import initializers
 from chainer import reporter
 from chainer.utils.sparse import CooMatrix
