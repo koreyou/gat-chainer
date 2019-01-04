@@ -64,10 +64,13 @@ def main():
         chainer.serializers.load_npz(args.model, model)
 
     updater = training.StandardUpdater(train_iter, optimizer, device=args.gpu)
-    trigger = training.triggers.EarlyStoppingTrigger(
-        monitor='validation/main/loss', patients=12,
-        check_trigger=(args.validation_interval, 'epoch'),
-        max_trigger=(args.epoch, 'epoch'))
+    if args.early_stopping:
+        trigger = training.triggers.EarlyStoppingTrigger(
+            monitor='validation/main/loss', patients=10,
+            check_trigger=(args.validation_interval, 'epoch'),
+            max_trigger=(args.epoch, 'epoch'))
+    else:
+        trigger = (args.epoch, 'epoch')
     trainer = training.Trainer(updater, trigger, out=args.out)
 
     trainer.extend(extensions.Evaluator(dev_iter, model, device=args.gpu),
