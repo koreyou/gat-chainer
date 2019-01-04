@@ -126,8 +126,7 @@ def normalize_pygcn(a):
     Returns:
         scipy.sparse.coo_matrix: Normalized adjacency matrix
     """
-    # no need to add identity matrix because self connection has already been added
-    # a += sp.eye(a.shape[0])
+    a += sp.eye(a.shape[0])
     rowsum = np.array(a.sum(1))
     rowsum_inv = np.power(rowsum, -1).flatten()
     rowsum_inv[np.isinf(rowsum_inv)] = 0.
@@ -146,8 +145,7 @@ def normalize(adj):
     Returns:
         scipy.sparse.coo_matrix: Normalized adjacency matrix
     """
-    # no need to add identity matrix because self connection has already been added
-    # a += sp.eye(a.shape[0])
+    adj += sp.eye(adj.shape[0])
     rowsum = np.array(adj.sum(1))
     d_inv_sqrt = np.power(rowsum, -0.5).flatten()
     d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
