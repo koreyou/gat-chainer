@@ -1,95 +1,118 @@
+import pickle as pkl
+import sys
+
 import chainer
+import networkx as nx
 import numpy as np
 import scipy.sparse as sp
-import sklearn
-from sklearn.datasets import fetch_20newsgroups
-
-from nlp_utils import tokenize
 
 
-def moving_window_window_iterator(sentences, window):
-    for sentence in sentences:
-        for i in range(0, len(sentence) - window + 1):
-            yield sentence[i:i + window]
+def parse_index_file(filename):
+    """Parse index file."""
+    index = []
+    for line in open(filename):
+        index.append(int(line.strip()))
+    return index
 
 
-def calc_pmi(X):
-    Y = X.T.dot(X).astype(np.float32)
-    Y_diag = Y.diagonal()
-    Y.data /= Y_diag[Y.indices]
-    Y.data *= X.shape[0]
-    for col in range(Y.shape[1]):
-        Y.data[Y.indptr[col]:Y.indptr[col + 1]] /= Y_diag[col]
-    Y.data = np.maximum(0., np.log(Y.data))
-    return Y
+def sample_mask(idx, l):
+    """Create mask."""
+    mask = np.zeros(l)
+    mask[idx] = 1
+    return np.array(mask, dtype=np.bool)
 
 
-def create_text_adjacency_matrix(texts):
-    """Create adjacency matrix from texts
-
-    Arguments:
-        texts (list of list of str): List of documents, each consisting
-            of tokenized list of text
-
-    Returns:
-        adj (scipy.sparse.coo_matrix): (Node, Node) shape
-            normalized adjency matrix.
+def load_data(dataset_str, normalization='gcn'):
     """
-    transformer = sklearn.feature_extraction.text.TfidfVectorizer(
-        max_df=1.0, ngram_range=(1, 1), min_df=5, analyzer=lambda x: x)
-    freq_doc = transformer.fit_transform(texts)
+    Loads input data from gcn/data directory
+    This function was adopted from https://github.com/tkipf/gcn/blob/98357b/gcn/utils.py
 
-    freq_window = transformer.transform(
-        moving_window_window_iterator(texts, 20))
-    freq_window.data.fill(1)
-    mat_pmi = calc_pmi(freq_window)
-
-    adj = sp.bmat([[None, freq_doc], [freq_doc.T, mat_pmi]])
-
-    adj.setdiag(np.ones([adj.shape[0]], dtype=adj.dtype))
-    adj.eliminate_zeros()
-    # it should already be COO, but behavior of bmat is not well documented
-    # so apply it
-    adj = adj.tocoo()
-
-    return adj
-
-
-def load_20newsgroups(validation_ratio, normalization):
-    """Load text network (20 news group)
+    ind.dataset_str.x => the feature vectors of the training instances as scipy.sparse.csr.csr_matrix object;
+    ind.dataset_str.tx => the feature vectors of the test instances as scipy.sparse.csr.csr_matrix object;
+    ind.dataset_str.allx => the feature vectors of both labeled and unlabeled training instances
+        (a superset of ind.dataset_str.x) as scipy.sparse.csr.csr_matrix object;
+    ind.dataset_str.y => the one-hot labels of the labeled training instances as numpy.ndarray object;
+    ind.dataset_str.ty => the one-hot labels of the test instances as numpy.ndarray object;
+    ind.dataset_str.ally => the labels for instances in ind.dataset_str.allx as numpy.ndarray object;
+    ind.dataset_str.graph => a dict in the format {index: [index_of_neighbor_nodes]} as collections.defaultdict
+        object;
+    ind.dataset_str.test.index => the indices of test instances in graph, for the inductive setting as list object.
+    All objects above must be saved using python pickle module.
 
     Arguments:
-        validation_ratio (float): Ratio of validation split
+        dataset_str (str): Name of the dataset
         normalization (str): Variant of normalization method to use.
 
     Returns:
         adj (chainer.utils.sparse.CooMatrix): (Node, Node) shape
             normalized adjency matrix.
+        features (chainer.utils.sparse.CooMatrix): (Node, feature size) shape
+            normalized feature matrix.
         labels (np.ndarray): (Node, ) shape labels array
         idx_train (np.ndarray): Indices of the train
         idx_val (np.ndarray): Indices of val array
         idx_test (np.ndarray): Indices of test array
     """
-    train = fetch_20newsgroups(subset='train')
-    test = fetch_20newsgroups(subset='test')
-    adj = create_text_adjacency_matrix(
-        [tokenize(t) for t in (train['data'] + test['data'])])
+    names = ['x', 'y', 'tx', 'ty', 'allx', 'ally', 'graph']
+    objects = []
+    for i in range(len(names)):
+        with open("data/ind.{}.{}".format(dataset_str, names[i]), 'rb') as f:
+            if sys.version_info > (3, 0):
+                objects.append(pkl.load(f, encoding='latin1'))
+            else:
+                objects.append(pkl.load(f))
+
+    x, y, tx, ty, allx, ally, graph = tuple(objects)
+    test_idx_reorder = parse_index_file("data/ind.{}.test.index".format(dataset_str))
+    test_idx_range = np.sort(test_idx_reorder)
+
+    if dataset_str == 'citeseer':
+        # Fix citeseer dataset (there are some isolated nodes in the graph)
+        # Find isolated nodes, add them as zero-vecs into the right position
+        test_idx_range_full = range(min(test_idx_reorder), max(test_idx_reorder)+1)
+        tx_extended = sp.lil_matrix((len(test_idx_range_full), x.shape[1]))
+        tx_extended[test_idx_range-min(test_idx_range), :] = tx
+        tx = tx_extended
+        ty_extended = np.zeros((len(test_idx_range_full), y.shape[1]))
+        ty_extended[test_idx_range-min(test_idx_range), :] = ty
+        ty = ty_extended
+
+    features = sp.vstack((allx, tx)).tolil()
+    features[test_idx_reorder, :] = features[test_idx_range, :]
+    features = preprocess_features(features)
+    features = to_chainer_sparse_variable(features)
+
+    adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph)).astype(np.float32)
+
+    labels = np.vstack((ally, ty))
+    labels[test_idx_reorder, :] = labels[test_idx_range, :]
+    labels = np.where(labels)[1]
+    labels = labels.astype(np.int32)
+
+    idx_test = np.array(test_idx_range.tolist(), np.int32)
+    idx_train = np.array(list(range(len(y))), np.int32)
+    idx_val = np.array(list(range(len(y), len(y)+500)), np.int32)
+
     if normalization == 'gcn':
         adj = normalize(adj)
     else:
         adj = normalize_pygcn(adj)
-    n_train = int(len(train['data']) * (1.0 - validation_ratio))
-    n_all = len(train['data']) + len(test['data'])
-    idx_train = np.array(list(range(n_train)), np.int32)
-    idx_val = np.array(list(range(n_train, len(train['data']))), np.int32)
-    idx_test = np.array(list(range(len(train['data']), n_all)), np.int32)
 
-    labels = np.concatenate(
-        (train['target'], test['target'], np.full([adj.shape[0] - n_all], -1)))
-    labels = labels.astype(np.int32)
     adj = to_chainer_sparse_variable(adj)
 
-    return adj, labels, idx_train, idx_val, idx_test
+    return adj, features, labels, idx_train, idx_val, idx_test
+
+
+def preprocess_features(features):
+    """ Row-normalize feature matrix and convert to tuple representation
+    This function was adopted from https://github.com/tkipf/gcn/blob/98357b/gcn/utils.py
+    """
+    rowsum = np.array(features.sum(1))
+    r_inv = np.power(rowsum, -1).flatten()
+    r_inv[np.isinf(r_inv)] = 0.
+    r_mat_inv = sp.diags(r_inv)
+    features = r_mat_inv.dot(features)
+    return features
 
 
 def normalize_pygcn(a):
