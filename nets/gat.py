@@ -2,6 +2,7 @@ import copy
 
 import chainer
 import chainer.functions as F
+import chainer.links as L
 import numpy as np
 from chainer import initializers
 from chainer import reporter
@@ -10,13 +11,13 @@ from chainer.utils.sparse import CooMatrix
 from nets.common import sparse_to_gpu, sparse_to_cpu
 
 
-class GCN(chainer.Chain):
+class GAT(chainer.Chain):
     def __init__(self, adj, features, labels, feat_size, dropout=0.5):
-        super(GCN, self).__init__()
+        super(GAT, self).__init__()
         n_class = np.max(labels) + 1
         with self.init_scope():
-            self.gconv1 = GraphConvolution(features.shape[1], feat_size)
-            self.gconv2 = GraphConvolution(feat_size, n_class)
+            self.gconv1 = GraphAttentionConvolution(features.shape[1], feat_size)
+            self.gconv2 = GraphAttentionConvolution(feat_size, n_class)
         self.adj = adj
         self.features = features
         self.labels = labels
@@ -66,18 +67,18 @@ class GCN(chainer.Chain):
     def to_gpu(self, device=None):
         self.adj = sparse_to_gpu(self.adj, device=device)
         self.labels = chainer.backends.cuda.to_gpu(self.labels, device=device)
-        return super(GCN, self).to_gpu(device=device)
+        return super(GAT, self).to_gpu(device=device)
 
     def to_cpu(self):
         self.adj = sparse_to_cpu(self.adj)
         self.labels = chainer.backends.cuda.to_cpu(self.labels)
-        return super(GCN, self).to_cpu()
+        return super(GAT, self).to_cpu()
 
 
-class GraphConvolution(chainer.Link):
+class GraphAttentionConvolution(chainer.Link):
     def __init__(self, in_size, out_size=None, nobias=True, initialW=None,
                  initial_bias=None):
-        super(GraphConvolution, self).__init__()
+        super(GraphAttentionConvolution, self).__init__()
 
         if out_size is None:
             in_size, out_size = None, in_size
@@ -94,13 +95,31 @@ class GraphConvolution(chainer.Link):
                     initial_bias = 0
                 bias_initializer = initializers._get_initializer(initial_bias)
                 self.b = chainer.Parameter(bias_initializer, out_size)
+            self.attention_linear = L.Linear(out_size * 2, 1)
+
+    def attention(self, x, adj):
+        att = copy.deepcopy(adj)
+        h = F.hstack((x[adj.col], x[adj.row]))
+        h = F.squeeze(self.attention_linear(h), -1)
+        att.data = F.leaky_relu(h, 0.2)
+        # Scaling trick for numerical stability
+        att.data -= F.max(att.data)
+        att.data = F.exp(att.data)
+        rowsum = F.sparse_matmul(
+            att, self.xp.ones([att.shape[1], 1], dtype=att.data.dtype))
+        rowsum = 1. / F.squeeze(rowsum, 1)
+        # We could've just converted rowsum to diagonal matrix and do sparse_matmul
+        # but current sparse_matmul does not support two sparse matrix inputs
+        att.data = att.data * rowsum[att.row]
+        return att
 
     def __call__(self, x, adj):
         if isinstance(x, chainer.utils.CooMatrix):
             x = F.sparse_matmul(x, self.W)
         else:
             x = F.matmul(x, self.W)
-        output = F.sparse_matmul(adj, x)
+        att = self.attention(x, adj)
+        output = F.sparse_matmul(att, x)
 
         if self.b is not None:
             output += self.b
