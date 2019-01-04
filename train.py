@@ -12,6 +12,8 @@ from graphs import load_data
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', '-m', type=str, default=None)
+    parser.add_argument('--dataset', type=str, default='cora',
+                        choices=['cora', 'pubmed', 'citeseer'])
     parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
     parser.add_argument('--epoch', '-e', type=int, default=500,
                         help='Number of sweeps over the dataset to train')
@@ -28,13 +30,14 @@ def main():
                         help='Number of updates before running validation')
     parser.add_argument('--early-stopping', action='store_true',
                         help='Enable early stopping.')
-    parser.add_argument('--normalization', default='pygcn',
+    parser.add_argument('--normalization', default='gcn',
                         choices=['pygcn', 'gcn'],
                         help='Variant of adjacency matrix normalization method to use')
     args = parser.parse_args()
 
     print("Loading data")
-    adj, features, labels, idx_train, idx_val, idx_test = load_data('cora', normalization=args.normalization)
+    adj, features, labels, idx_train, idx_val, idx_test = load_data(
+        args.dataset, normalization=args.normalization)
 
     train_iter = chainer.iterators.SerialIterator(
         idx_train, batch_size=len(idx_train), shuffle=False)

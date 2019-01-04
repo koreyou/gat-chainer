@@ -85,8 +85,12 @@ def load_data(dataset_str, normalization='gcn'):
     adj = nx.adjacency_matrix(nx.from_dict_of_lists(graph)).astype(np.float32)
 
     labels = np.vstack((ally, ty))
-    labels[test_idx_reorder, :] = labels[test_idx_range, :]
-    labels = np.where(labels)[1]
+    # in citeseer dataset, there are all-none node, which we need to remove
+    zero_indices = np.where(1 - labels.sum(1))[0]
+    labels = np.argmax(labels, axis=1)
+    if dataset_str == 'citeseer':
+        labels[zero_indices] = -1
+    labels[test_idx_reorder] = labels[test_idx_range]
     labels = labels.astype(np.int32)
 
     idx_test = np.array(test_idx_range.tolist(), np.int32)
