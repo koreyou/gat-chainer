@@ -29,7 +29,7 @@ class GAT(chainer.Chain):
             features.data = F.dropout(features.data, self.dropout)
         else:
             features = F.dropout(self.features)
-        h = F.relu(self.gconv1(features, self.adj))
+        h = F.elu(self.gconv1(features, self.adj))
         h = F.dropout(h, self.dropout)
         out = self.gconv2(h, self.adj)
         return out
