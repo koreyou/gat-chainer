@@ -5,7 +5,7 @@ import chainer
 from chainer import training
 from chainer.training import extensions
 
-from nets import GCN
+from nets import GCN, GAT
 from graphs import load_data
 
 
@@ -46,7 +46,7 @@ def main():
 
     # Set up a neural network to train.
     print("Building model")
-    model = GCN(adj, features, labels, args.unit, dropout=args.dropout)
+    model = GAT(adj, features, labels, args.unit, dropout=args.dropout)
 
     if args.gpu >= 0:
         # Make a specified GPU current
