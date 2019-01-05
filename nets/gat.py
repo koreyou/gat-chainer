@@ -16,8 +16,8 @@ class GAT(chainer.Chain):
         super(GAT, self).__init__()
         n_class = np.max(labels) + 1
         with self.init_scope():
-            self.gconv1 = GraphAttentionConvolution(features.shape[1], feat_size)
-            self.gconv2 = GraphAttentionConvolution(feat_size, n_class)
+            self.gconv1 = GraphAttentionConvolution(8, features.shape[1], feat_size)
+            self.gconv2 = GraphAttentionConvolution(1, self.gconv1.out_size, n_class)
         self.adj = adj
         self.features = features
         self.labels = labels
@@ -76,13 +76,13 @@ class GAT(chainer.Chain):
 
 
 class GraphAttentionConvolution(chainer.Link):
-    def __init__(self, in_size, out_size=None, nobias=True, initialW=None,
+    def __init__(self, n_heads, in_size, out_size=None, nobias=True, initialW=None,
                  initial_bias=None):
         super(GraphAttentionConvolution, self).__init__()
 
         if out_size is None:
             in_size, out_size = None, in_size
-        self.out_size = out_size
+        self.out_size = n_heads * out_size
 
         with self.init_scope():
             if initialW is None:
@@ -95,31 +95,35 @@ class GraphAttentionConvolution(chainer.Link):
                     initial_bias = 0
                 bias_initializer = initializers._get_initializer(initial_bias)
                 self.b = chainer.Parameter(bias_initializer, out_size)
-            self.attention_linear = L.Linear(out_size * 2, 1)
+            self.attention_linear = L.Linear(out_size * 2, n_heads)
 
     def attention(self, x, adj):
         att = copy.deepcopy(adj)
         h = F.hstack((x[adj.col], x[adj.row]))
-        h = F.squeeze(self.attention_linear(h), -1)
-        att.data = F.leaky_relu(h, 0.2)
+        h = self.attention_linear(h)
+        att_data = F.leaky_relu(h, 0.2)
         # Scaling trick for numerical stability
-        att.data -= F.max(att.data)
-        att.data = F.exp(att.data)
-        rowsum = F.sparse_matmul(
-            att, self.xp.ones([att.shape[1], 1], dtype=att.data.dtype))
-        rowsum = 1. / F.squeeze(rowsum, 1)
-        # We could've just converted rowsum to diagonal matrix and do sparse_matmul
-        # but current sparse_matmul does not support two sparse matrix inputs
-        att.data = att.data * rowsum[att.row]
-        return att
+        att_data -= F.max(att_data)
+        att_data = F.exp(att_data)
+        output = []
+        for att_data_i in F.split_axis(att_data, att_data.shape[1], axis=1):
+            att.data = F.squeeze(att_data_i, 1)
+            rowsum = F.sparse_matmul(
+                att, self.xp.ones([att.shape[1], 1], dtype=att.data.dtype))
+            rowsum = 1. / F.squeeze(rowsum, 1)
+            # We could've just converted rowsum to diagonal matrix and do sparse_matmul
+            # but current sparse_matmul does not support two sparse matrix inputs
+            att.data = att.data * rowsum[att.row]
+            output.append(F.sparse_matmul(att, x))
+        output = F.concat(output, axis=1)
+        return output
 
     def __call__(self, x, adj):
         if isinstance(x, chainer.utils.CooMatrix):
             x = F.sparse_matmul(x, self.W)
         else:
             x = F.matmul(x, self.W)
-        att = self.attention(x, adj)
-        output = F.sparse_matmul(att, x)
+        output = self.attention(x, adj)
 
         if self.b is not None:
             output += self.b
