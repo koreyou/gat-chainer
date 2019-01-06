@@ -66,11 +66,13 @@ class GAT(chainer.Chain):
 
     def to_gpu(self, device=None):
         self.adj = sparse_to_gpu(self.adj, device=device)
+        self.features = sparse_to_gpu(self.features, device=device)
         self.labels = chainer.backends.cuda.to_gpu(self.labels, device=device)
         return super(GAT, self).to_gpu(device=device)
 
     def to_cpu(self):
         self.adj = sparse_to_cpu(self.adj)
+        self.features = sparse_to_cpu(self.features)
         self.labels = chainer.backends.cuda.to_cpu(self.labels)
         return super(GAT, self).to_cpu()
 
