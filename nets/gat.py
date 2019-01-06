@@ -103,7 +103,7 @@ class GraphAttentionConvolution(chainer.Chain):
         h = self.attention_linear(h)
         att_data = F.leaky_relu(h, 0.2)
         # Scaling trick for numerical stability
-        att_data -= F.max(att_data)
+        att_data -= self.xp.max(att_data.data)
         att_data = F.exp(att_data)
         output = []
         for att_data_i in F.split_axis(att_data, att_data.shape[1], axis=1):
