@@ -75,7 +75,7 @@ class GAT(chainer.Chain):
         return super(GAT, self).to_cpu()
 
 
-class GraphAttentionConvolution(chainer.Link):
+class GraphAttentionConvolution(chainer.Chain):
     def __init__(self, n_heads, in_size, out_size=None, nobias=True, initialW=None,
                  initial_bias=None):
         super(GraphAttentionConvolution, self).__init__()
