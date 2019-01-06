@@ -91,7 +91,7 @@ class GraphAttentionConvolution(chainer.Chain):
                 if initial_bias is None:
                     initial_bias = 0
                 bias_initializer = initializers._get_initializer(initial_bias)
-                self.b = chainer.Parameter(bias_initializer, out_size)
+                self.b = chainer.Parameter(bias_initializer, self.out_size)
             self.attention_W = chainer.Parameter(
                 initialW, (1, self.n_heads, out_size, 2))
 
