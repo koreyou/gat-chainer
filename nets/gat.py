@@ -24,12 +24,7 @@ class GAT(chainer.Chain):
         self.dropout = dropout
 
     def _forward(self):
-        if isinstance(self.features, CooMatrix):
-            features = copy.deepcopy(self.features)
-            features.data = F.dropout(features.data, self.dropout)
-        else:
-            features = F.dropout(self.features)
-        h = F.elu(self.gconv1(features, self.adj))
+        h = F.elu(self.gconv1(self.features, self.adj))
         h = F.dropout(h, self.dropout)
         out = self.gconv2(h, self.adj)
         return out
@@ -107,6 +102,8 @@ class GraphAttentionConvolution(chainer.Chain):
         # Scaling trick for numerical stability
         att_data -= self.xp.max(att_data.data)
         att_data = F.exp(att_data)
+        x = F.dropout(x, 0.6)
+
         output = []
         for att_data_i in F.split_axis(att_data, att_data.shape[1], axis=1):
             att.data = F.squeeze(att_data_i, 1)
@@ -116,14 +113,18 @@ class GraphAttentionConvolution(chainer.Chain):
             # We could've just converted rowsum to diagonal matrix and do sparse_matmul
             # but current sparse_matmul does not support two sparse matrix inputs
             att.data = att.data * rowsum[att.row]
+            att.data = F.dropout(att.data, 0.6)
             output.append(F.sparse_matmul(att, x))
         output = F.concat(output, axis=1)
         return output
 
     def __call__(self, x, adj):
         if isinstance(x, chainer.utils.CooMatrix):
+            x = copy.deepcopy(x)
+            x.data = F.dropout(x.data, 0.6)
             x = F.sparse_matmul(x, self.W)
         else:
+            x = F.dropout(x, 0.6)
             x = F.matmul(x, self.W)
         output = self.attention(x, adj)
 
