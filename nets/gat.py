@@ -25,7 +25,6 @@ class GAT(chainer.Chain):
 
     def _forward(self):
         h = F.elu(self.gconv1(self.features, self.adj))
-        h = F.dropout(h, self.dropout)
         out = self.gconv2(h, self.adj)
         return out
 
