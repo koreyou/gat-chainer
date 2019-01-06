@@ -14,8 +14,8 @@ def main():
     parser.add_argument('--model', '-m', type=str, default=None)
     parser.add_argument('--dataset', type=str, default='cora',
                         choices=['cora', 'pubmed', 'citeseer'])
-    parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
-    parser.add_argument('--epoch', '-e', type=int, default=500,
+    parser.add_argument('--lr', type=float, default=0.005, help='Learning rate')
+    parser.add_argument('--epoch', '-e', type=int, default=5000,
                         help='Number of sweeps over the dataset to train')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU ID (negative value indicates CPU)')
@@ -64,13 +64,10 @@ def main():
         chainer.serializers.load_npz(args.model, model)
 
     updater = training.StandardUpdater(train_iter, optimizer, device=args.gpu)
-    if args.early_stopping:
-        trigger = training.triggers.EarlyStoppingTrigger(
-            monitor='validation/main/loss', patients=10,
-            check_trigger=(args.validation_interval, 'epoch'),
-            max_trigger=(args.epoch, 'epoch'))
-    else:
-        trigger = (args.epoch, 'epoch')
+    trigger = training.triggers.EarlyStoppingTrigger(
+        monitor='validation/main/loss', patients=100,
+        check_trigger=(args.validation_interval, 'epoch'),
+        max_trigger=(args.epoch, 'epoch'))
     trainer = training.Trainer(updater, trigger, out=args.out)
 
     trainer.extend(extensions.Evaluator(dev_iter, model, device=args.gpu),
