@@ -1,6 +1,6 @@
-# Text GCN on Chainer
+# Chainer implementation of GCN/GAT
 
-This project implements GCN ([Kipf and Welling. 2017. Semi-Supervised Classification with Graph Convolutional Networks. ICLR.](https://arxiv.org/abs/1609.02907)) and GAT ([Veličković et al. 2018. Graph Attention Networks](https://arxiv.org/abs/1710.10903)) with [Chainer](https://chainer.org/).
+This project implements GCN ([Kipf and Welling. 2017. Semi-Supervised Classification with Graph Convolutional Networks. ICLR.](https://arxiv.org/abs/1609.02907)) and GAT ([Veličković et al. 2018. Graph Attention Networks. ICLR.](https://arxiv.org/abs/1710.10903)) with [Chainer](https://chainer.org/).
 The project includes codes to reproduce the experiments on multiple graph classification datasets. **This is NOT an official implementation by the authors.**
 
 I referenced [@takyamamoto's implementation of GCN](https://github.com/takyamamoto/Graph-Convolution-Chainer) to implement this project.
