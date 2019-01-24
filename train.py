@@ -11,7 +11,9 @@ from graphs import load_data
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', '-m', type=str, default=None)
+    parser.add_argument('--resume', '-m', type=str, default=None)
+    parser.add_argument('--model', type=str, default='gat',
+                        choices=['gat', 'gcn'])
     parser.add_argument('--dataset', type=str, default='cora',
                         choices=['cora', 'pubmed', 'citeseer'])
     parser.add_argument('--lr', type=float, default=0.005, help='Learning rate')
@@ -45,8 +47,9 @@ def main():
         idx_val, batch_size=len(idx_val), repeat=False, shuffle=False)
 
     # Set up a neural network to train.
-    print("Building model")
-    model = GAT(adj, features, labels, args.unit, dropout=args.dropout)
+    print("Building model %s" % args.model)
+    model_cls = GAT if args.model == 'gat' else GCN
+    model = model_cls(adj, features, labels, args.unit, dropout=args.dropout)
 
     if args.gpu >= 0:
         # Make a specified GPU current
@@ -59,9 +62,9 @@ def main():
         optimizer.add_hook(
             chainer.optimizer_hooks.WeightDecay(args.weight_decay))
 
-    if args.model != None:
-        print("Loading model from " + args.model)
-        chainer.serializers.load_npz(args.model, model)
+    if args.resume != None:
+        print("Loading model from " + args.resume)
+        chainer.serializers.load_npz(args.resume, model)
 
     updater = training.StandardUpdater(train_iter, optimizer, device=args.gpu)
     trigger = training.triggers.EarlyStoppingTrigger(
