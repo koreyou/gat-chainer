@@ -5,23 +5,25 @@ import chainer
 from chainer import training
 from chainer.training import extensions
 
-from nets import GCN
+from nets import GCN, GAT
 from graphs import load_data
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', '-m', type=str, default=None)
+    parser.add_argument('--resume', '-m', type=str, default=None)
+    parser.add_argument('--model', type=str, default='gat',
+                        choices=['gat', 'gcn'])
     parser.add_argument('--dataset', type=str, default='cora',
                         choices=['cora', 'pubmed', 'citeseer'])
-    parser.add_argument('--lr', type=float, default=0.01, help='Learning rate')
-    parser.add_argument('--epoch', '-e', type=int, default=500,
+    parser.add_argument('--lr', type=float, default=0.005, help='Learning rate')
+    parser.add_argument('--epoch', '-e', type=int, default=5000,
                         help='Number of sweeps over the dataset to train')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU ID (negative value indicates CPU)')
     parser.add_argument('--out', '-o', default='result',
                         help='Directory to output the result')
-    parser.add_argument('--unit', '-u', type=int, default=16,
+    parser.add_argument('--unit', '-u', type=int, default=8,
                         help='Number of units')
     parser.add_argument('--dropout', '-d', type=float, default=0.5,
                         help='Dropout rate')
@@ -45,8 +47,9 @@ def main():
         idx_val, batch_size=len(idx_val), repeat=False, shuffle=False)
 
     # Set up a neural network to train.
-    print("Building model")
-    model = GCN(adj, features, labels, args.unit, dropout=args.dropout)
+    print("Building model %s" % args.model)
+    model_cls = GAT if args.model == 'gat' else GCN
+    model = model_cls(adj, features, labels, args.unit, dropout=args.dropout)
 
     if args.gpu >= 0:
         # Make a specified GPU current
@@ -59,18 +62,15 @@ def main():
         optimizer.add_hook(
             chainer.optimizer_hooks.WeightDecay(args.weight_decay))
 
-    if args.model != None:
-        print("Loading model from " + args.model)
-        chainer.serializers.load_npz(args.model, model)
+    if args.resume != None:
+        print("Loading model from " + args.resume)
+        chainer.serializers.load_npz(args.resume, model)
 
     updater = training.StandardUpdater(train_iter, optimizer, device=args.gpu)
-    if args.early_stopping:
-        trigger = training.triggers.EarlyStoppingTrigger(
-            monitor='validation/main/loss', patients=10,
-            check_trigger=(args.validation_interval, 'epoch'),
-            max_trigger=(args.epoch, 'epoch'))
-    else:
-        trigger = (args.epoch, 'epoch')
+    trigger = training.triggers.EarlyStoppingTrigger(
+        monitor='validation/main/loss', patients=100,
+        check_trigger=(args.validation_interval, 'epoch'),
+        max_trigger=(args.epoch, 'epoch'))
     trainer = training.Trainer(updater, trigger, out=args.out)
 
     trainer.extend(extensions.Evaluator(dev_iter, model, device=args.gpu),
@@ -82,7 +82,7 @@ def main():
 
     if args.early_stopping:
         # Take a best snapshot
-        record_trigger = training.triggers.MaxValueTrigger(
+        record_trigger = training.triggers.MinValueTrigger(
             'validation/main/loss', (args.validation_interval, 'epoch'))
         trainer.extend(
             extensions.snapshot_object(model, 'best_model.npz'),
